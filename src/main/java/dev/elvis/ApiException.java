@@ -1,6 +1,6 @@
 package dev.elvis;
 
-class ApiException extends RuntimeException {
+public class ApiException extends RuntimeException {
     private final ErrorDto errorDetails;
     public ApiException(ErrorDto errorDetails) {
         super(errorDetails.message() != null ? errorDetails.message() : "API Error");

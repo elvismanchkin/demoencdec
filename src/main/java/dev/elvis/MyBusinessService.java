@@ -1,9 +1,8 @@
 package dev.elvis;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import io.micronaut.http.client.exceptions.HttpClientResponseException;
-import io.micronaut.serde.ObjectMapper;
 import jakarta.inject.Inject;
-import jakarta.inject.Named;
 import jakarta.inject.Singleton;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -18,7 +17,6 @@ public class MyBusinessService {
     MyExternalServiceClient externalClient;
     @Inject DecryptionService decryptionService;
     @Inject EncryptionService encryptionService;
-    @Inject @Named("targetServiceMapper")
     ObjectMapper targetMapper;
 
 
@@ -71,7 +69,6 @@ public class MyBusinessService {
                 });
     }
 
-    // Encrypt request example remains the same
     public Mono<Void> sendEncryptedData(SomeSpecificObject dataToSend) {
         return encryptionService.serializeAndEncrypt(dataToSend, targetMapper)
                 .map(CryptoWrapper::new)

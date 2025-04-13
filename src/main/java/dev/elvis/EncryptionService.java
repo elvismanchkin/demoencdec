@@ -1,6 +1,6 @@
 package dev.elvis;
 
-import io.micronaut.serde.ObjectMapper;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.inject.Singleton;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -12,22 +12,26 @@ import java.util.Base64;
 
 @Singleton
 public class EncryptionService {
-
     private static final Logger log = LoggerFactory.getLogger(EncryptionService.class);
-    // Assume crypto helper configured internally
+    // No mapper injected here, it must be provided by the caller
 
     /**
-     * Serializes the object using the provided mapper, encrypts the resulting JSON bytes,
-     * and returns a Base64 encoded string.
+     * Serializes object using the *provided* ObjectMapper and encrypts.
+     * @param plainObject Object to serialize/encrypt.
+     * @param specificMapper ObjectMapper to use for serialization (e.g., CAMEL_CASE one).
+     * @return Mono emitting Base64 encoded encrypted string.
      */
     public Mono<String> serializeAndEncrypt(Object plainObject, ObjectMapper specificMapper) {
-        if (plainObject == null) {
-            return Mono.error(new IllegalArgumentException("Input object cannot be null"));
-        }
+        if (plainObject == null) return Mono.error(new IllegalArgumentException("Cannot encrypt null object"));
+        if (specificMapper == null) return Mono.error(new IllegalArgumentException("ObjectMapper cannot be null"));
+
         return Mono.fromCallable(() -> {
+                    // Use the mapper passed by the caller
                     byte[] jsonBytes = specificMapper.writeValueAsBytes(plainObject);
-                    // byte[] encryptedBytes = cryptoHelper.encryptBytes(jsonBytes); // Actual encryption
-                    byte[] encryptedBytes = ("enc-" + new String(jsonBytes, StandardCharsets.UTF_8)).getBytes(StandardCharsets.UTF_8); // Placeholder
+                    log.debug("Serialized {} bytes using provided ObjectMapper: {}", jsonBytes.length, specificMapper.getClass().getSimpleName());
+                    /* === Placeholder: Replace with actual encryption logic === */
+                    byte[] encryptedBytes = ("enc-" + new String(jsonBytes, StandardCharsets.UTF_8)).getBytes(StandardCharsets.UTF_8);
+                    /* === End Placeholder === */
                     return Base64.getEncoder().encodeToString(encryptedBytes);
                 })
                 .subscribeOn(Schedulers.boundedElastic())

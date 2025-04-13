@@ -1,6 +1,6 @@
 package dev.elvis;
 
-class HttpApiException extends RuntimeException {
+public class HttpApiException extends RuntimeException {
     private final int statusCode;
     private final String responseBody; // Include response body if available/readable
     public HttpApiException(String message, int statusCode, String responseBody, Throwable cause) {

@@ -1,0 +1,9 @@
+micronaut:
+  application:
+    name: demoencdec
+  serde:
+    property-naming-strategy: SNAKE_CASE
+    deserialization:
+      ignore-unknown: true
+rabbitmq:
+  uri: amqp://guest:guest@localhost:5672

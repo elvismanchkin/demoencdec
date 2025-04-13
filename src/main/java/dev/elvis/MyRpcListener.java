@@ -2,77 +2,85 @@ package dev.elvis;
 
 // Assuming your business logic is now *triggered* by the listener, but the data is already present
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.rabbitmq.client.AMQP.BasicProperties;
 import io.micronaut.rabbitmq.annotation.Queue;
 import io.micronaut.rabbitmq.annotation.RabbitListener;
-import io.micronaut.serde.ObjectMapper;
 import jakarta.inject.Inject;
 import jakarta.inject.Named;
+import jakarta.inject.Singleton;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import reactor.core.publisher.Mono;
 
+import java.nio.charset.StandardCharsets;
+import java.util.Base64;
+
+@Singleton
 @RabbitListener
 public class MyRpcListener {
-
     private static final Logger log = LoggerFactory.getLogger(MyRpcListener.class);
 
-    // Inject services needed for processing/encryption
-    @Inject
-    EncryptionService encryptionService;
-    @Inject
-    @Named("clientFacingMapper")
-    ObjectMapper clientResponseMapper;
-    // Potentially other services if further processing of requestData is needed
+    @Inject EncryptionService encryptionService;
 
-    /**
-     * Listens for RPC requests where the body is the data object itself.
-     * Processes the data (if needed), encrypts it, and returns the encrypted reply.
-     *
-     * @param requestData    The request body, deserialized into SomeSpecificObject by Micronaut.
-     * @param properties     AMQP message properties (contains replyTo, correlationId).
-     * @return A Mono emitting the CryptoWrapper containing the encrypted response.
-     */
-    @Queue("rpc.request.queue.object") // Use the correct queue name
-    public Mono<CryptoWrapper> processRpcRequestWithObject(
-            SomeSpecificObject requestData, // Micronaut deserializes the incoming body to this
+    // Inject the NAMED ObjectMapper for CAMEL_CASE replies
+    @Inject @Named("externalServiceObjectMapper")
+    ObjectMapper externalServiceObjectMapper;
+
+
+    @Queue("rpc.request.queue.v3") // Your queue name
+    public Mono<CryptoWrapper> processRpcRequestAutoDeserializeSnake(
+            SomeSpecificObject requestData, // Micronaut attempts deserialization using default (SNAKE_CASE)
             BasicProperties properties) {
 
         final String correlationId = properties != null ? properties.getCorrelationId() : "[unknown]";
-        log.info("RPC Request object received. Type: '{}', CorrelationId: '{}'",
+        log.info("RPC Request object received (Auto-Deserialized with default SNAKE_CASE mapper). Type: '{}', CorrelationId: '{}'",
                 requestData != null ? requestData.getClass().getSimpleName() : "null", correlationId);
 
+        // Micronaut's listener error handling might catch deserialization errors before this point,
+        // but a null check is still good practice.
         if (requestData == null) {
-            log.error("Received null request data object for CorrelationId: '{}'", correlationId);
-            // Handle null input - maybe return an encrypted error? Or empty.
-            return Mono.empty(); // Example: Send no reply
+            log.error("Received null request data object after deserialization. CorrelationId: '{}'", correlationId);
+            return Mono.empty(); // Or other error handling
         }
 
-        // Optional: Perform any synchronous or asynchronous processing on requestData if needed
-        // If processing returns a Mono, you would use flatMap here.
-        // Mono<SomeSpecificObject> processedDataMono = someProcessingService.process(requestData);
-        // return processedDataMono.flatMap(processedData -> { ... encryption logic ... });
+        // 1. Decode specific field
+        SomeSpecificObject dataToEncrypt;
+        try {
+            String decodedSensitiveData = decodeSensitiveDataField(requestData.sensitiveData());
+            // Create new object with decoded data
+            dataToEncrypt = new SomeSpecificObject(
+                    requestData.id(), requestData.value(), requestData.count(), decodedSensitiveData
+            );
+            log.debug("Decoded sensitive field for CorrelationId: {}", correlationId);
+        } catch (Exception e) {
+            log.error("Failed decoding field. CorrId: '{}'. Error: {}", correlationId, e.getMessage(), e);
+            return Mono.empty(); // Or other error handling
+        }
 
-        // --- If no further async processing of requestData is needed ---
-
-        // 1. Directly call the encryption service with the received object.
-        //    This returns Mono<String>.
-        log.debug("Encrypting received object for CorrelationId: '{}'", correlationId);
-        return encryptionService.serializeAndEncrypt(requestData, clientResponseMapper)
-                .map(encryptedString -> {
-                    // 2. Map the resulting encrypted string (emitted by the Mono) to the wrapper DTO.
-                    log.debug("Wrapping encrypted response for CorrelationId: '{}'", correlationId);
-                    return new CryptoWrapper(encryptedString);
-                })
-                .doOnSuccess(wrapper -> log.info("Successfully processed and encrypted response for CorrelationId: '{}'", correlationId))
-                // 3. Handle errors during the encryption/serialization process
+        // 2. Encrypt reply using EncryptionService, passing the EXTERNAL (CAMEL_CASE) mapper
+        log.debug("Encrypting response object using externalServiceObjectMapper (CAMEL_CASE) for CorrelationId: '{}'", correlationId);
+        return encryptionService.serializeAndEncrypt(dataToEncrypt, externalServiceObjectMapper) // Pass the specific CAMEL_CASE mapper
+                .map(CryptoWrapper::new)
+                .doOnSuccess(wrapper -> log.info("Processed and encrypted response for CorrelationId: '{}'", correlationId))
                 .onErrorResume(error -> {
-                    log.error("Error processing/encrypting request for CorrelationId: '{}'. Error: {}",
+                    log.error("Error during encryption/wrapping stage for CorrelationId: '{}'. Error: {}",
                             correlationId, error.getMessage(), error);
-                    // Error handling strategy (e.g., return Mono.empty() to avoid reply)
                     return Mono.empty();
                 });
-        // The final Mono<CryptoWrapper> is returned. Micronaut handles the reply.
+    }
+
+    // Example decoding helper
+    private String decodeSensitiveDataField(String encodedData) {
+        if (encodedData == null) return null;
+        try {
+            // Replace with your actual decoding logic
+            log.trace("Decoding sensitive data field (assuming Base64)...");
+            byte[] decodedBytes = Base64.getDecoder().decode(encodedData);
+            return new String(decodedBytes, StandardCharsets.UTF_8);
+        } catch (IllegalArgumentException e) {
+            throw new IllegalArgumentException("Invalid encoding for sensitive data field", e);
+        }
     }
 }
 
