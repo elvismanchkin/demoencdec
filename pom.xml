@@ -75,8 +75,10 @@
             <artifactId>reactor-core</artifactId>
             <scope>compile</scope>
         </dependency>
-
-
+        <dependency>
+            <groupId>io.micronaut.rabbitmq</groupId>
+            <artifactId>micronaut-rabbitmq</artifactId>
+        </dependency>
         <dependency>
             <groupId>ch.qos.logback</groupId>
             <artifactId>logback-classic</artifactId>
